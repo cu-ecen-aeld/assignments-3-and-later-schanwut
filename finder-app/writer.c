@@ -17,7 +17,7 @@ int main(int argc, char **argv)
 	if (argc != 3)
 	{
 		syslog(LOG_ERR, "Invalid arguments");	
-		return -1;
+		return 1;
 	}
 
 	writefile = argv[1];
@@ -37,7 +37,7 @@ int main(int argc, char **argv)
 	if (fp == NULL)
 	{
 		syslog(LOG_ERR, "Error opening file %s: %s", writefile, strerror(errno));
-		return -1;
+		return 1;
 	}
 
 	fputs (writestr, fp);
