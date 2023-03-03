@@ -20,10 +20,13 @@ int main(int argc, char **argv)
 		syslog(LOG_ERR, "Invalid arguments");	
 		exit(1);
 	}
-
+	
 	writefile = argv[1];
 	writestr = argv[2];
 	
+	if ((writefile[0] == '\0') || (writestr[0] == '\0'))
+		exit(1);
+		
 	dirc = strdup(writefile);
 
 	status = mkdir(dirname(dirc), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
