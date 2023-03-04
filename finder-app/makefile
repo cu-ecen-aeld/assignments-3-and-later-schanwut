@@ -1,15 +1,13 @@
 CC=gcc
-CFLAGS=
-DIR=.
-OBJ = writer.c
+CFLAGS=-Wall -std=c11
 
-rebuild: clean writer
+SRC=writer.c
+OUTPUT=writer
 
-CROSS_COMPILE: CC=aarch64-none-linux-gnu-gcc
-CROSS_COMPILE: rebuild
+all: clean $(OUTPUT)
 
-writer: $(OBJ)
-	$(CC) -o $@ $^ $(CFLAGS)
+writer: $(SRC)
+	$(CROSS_COMPILE)$(CC) $(CFLAGS) -o $(OUTPUT) $(SRC)
 
 clean:
-	rm -f $(DIR)/*.o writer
+	rm -f $(OUTPUT)
