@@ -1,4 +1,15 @@
+#include <fcntl.h>
+#include <libgen.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
 #include "systemcalls.h"
+
+static bool do_exec_wrapper(char **command, const char *outputfile);
 
 /**
  * @param cmd the command to execute with system()
@@ -9,15 +20,12 @@
 */
 bool do_system(const char *cmd)
 {
+    int status = system(cmd);
 
-/*
- * TODO  add your code here
- *  Call the system() function with the command set in the cmd
- *   and return a boolean true if the system() call completed with success
- *   or false() if it returned a failure
-*/
+    if ((status != -1) && (WEXITSTATUS(status) == 0))
+        return true;
 
-    return true;
+    return false;
 }
 
 /**
@@ -45,23 +53,16 @@ bool do_exec(int count, ...)
         command[i] = va_arg(args, char *);
     }
     command[count] = NULL;
-    // this line is to avoid a compile warning before your implementation is complete
-    // and may be removed
-    command[count] = command[count];
 
-/*
- * TODO:
- *   Execute a system command by calling fork, execv(),
- *   and wait instead of system (see LSP page 161).
- *   Use the command[0] as the full path to the command to execute
- *   (first argument to execv), and use the remaining arguments
- *   as second argument to the execv() command.
- *
-*/
+    bool status = false;
+
+    if (count > 0) {
+        status = do_exec_wrapper(command, NULL);
+    }
 
     va_end(args);
 
-    return true;
+    return status;
 }
 
 /**
@@ -80,20 +81,44 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
         command[i] = va_arg(args, char *);
     }
     command[count] = NULL;
-    // this line is to avoid a compile warning before your implementation is complete
-    // and may be removed
-    command[count] = command[count];
 
-
-/*
- * TODO
- *   Call execv, but first using https://stackoverflow.com/a/13784315/1446624 as a refernce,
- *   redirect standard out to a file specified by outputfile.
- *   The rest of the behaviour is same as do_exec()
- *
-*/
+    if (count > 0) {
+        do_exec_wrapper(command, outputfile);
+    }
 
     va_end(args);
+
+    return true;
+}
+
+static bool do_exec_wrapper(char **command, const char *outputfile)
+{
+    pid_t pid;
+
+    if ((pid = fork ()) < 0)
+        return false;
+    else if (pid == 0) {
+        if (outputfile != NULL) {
+            int fd = open(outputfile, O_WRONLY | O_TRUNC | O_CREAT, 0644);
+
+            if (fd < 0)
+                exit(EXIT_FAILURE);
+            if (dup2(fd, 1) < 0)
+                exit(EXIT_FAILURE);
+
+            close(fd);
+        }
+
+        if (execv(command[0], command) < 0)
+            exit(-1);
+    }
+
+    int status;
+
+    if (waitpid (pid, &status, 0) == -1)
+        return false;
+    else if (WEXITSTATUS (status) != 0)
+        return false;
 
     return true;
 }
