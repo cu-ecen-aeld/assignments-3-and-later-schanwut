@@ -12,6 +12,7 @@
 #include <signal.h>
 #include <syslog.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 
 #define PORT "9000"  // the port users will be connecting to
 #define BACKLOG 10   // how many pending connections queue will hold
@@ -160,10 +161,22 @@ int main(int argc, char **argv)
 
 		syslog(LOG_ERR, "Accepted connection from %s", s);
 
-		if ((numbytes = recv(new_fd, buf, MAXDATASIZE, 0)) == -1) {
-			perror("recv");
-			exit(1);
-		}
+        numbytes = 0;
+        size_t recvbytes = 0;
+
+        while (1)
+        {
+            if ((recvbytes = recv(new_fd, buf + recvbytes, MAXDATASIZE - numbytes, 0)) == -1) {
+                perror("recv");
+                exit(1);
+            }
+
+            numbytes += recvbytes;
+
+            if (buf[numbytes - 1] == 0x0A)
+                break;
+        }
+
         buf[numbytes] = '\0';
 
 		//write data to file
