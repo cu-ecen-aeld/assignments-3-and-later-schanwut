@@ -16,24 +16,25 @@
 #include <pthread.h>
 #include <fcntl.h>
 #include <time.h>
+#include "queue.h"
 
 #define PORT "9000"  // the port users will be connecting to
-#define BACKLOG 40   // how many pending connections queue will hold
+#define BACKLOG 5    // how many pending connections queue will hold
 #define MAXDATASIZE 20000 // max number of bytes we can get at once 
 #define AESD_SOCKET_PATH "/var/tmp/aesdsocketdata"
 
-struct thread_info
+typedef struct thread_info
 {
     pthread_t t_id;
     int fd;
     char *ip;
     int fp;
-};
+    int status;
+    SLIST_ENTRY(thread_info) next; 
+} thread_nodes_t; 
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-struct thread_info t_info[BACKLOG];
 int t_count = 0;
-
 int g_fp;
 int g_sockfd;
 int sig_term = 0;
@@ -79,7 +80,7 @@ void *threadfunc(void *args)
     int fd = ((struct thread_info *) args)->fd;
     char *ip = ((struct thread_info *) args)->ip;
     int fp = ((struct thread_info *) args)->fp;
-    
+
     while (1)
     {
         if ((recvbytes = recv(fd, recvbuf + recvbytes, MAXDATASIZE - numbytes, 0)) == -1) {
@@ -122,6 +123,8 @@ void *threadfunc(void *args)
     free(recvbuf);
     close(fd);
 
+    ((struct thread_info *) args)->status = 1;
+
     pthread_cancel(t_id);
 
     return args;
@@ -160,6 +163,12 @@ int main(int argc, char **argv)
     int yes=1;
     char s[INET6_ADDRSTRLEN];
     int status;
+
+    thread_nodes_t *thread_node = NULL; 
+    thread_nodes_t *active_thread = NULL;
+    thread_nodes_t *store = NULL;
+    SLIST_HEAD(slisthead, thread_info) head = SLIST_HEAD_INITIALIZER(head);
+    SLIST_INIT(&head);
 
 	openlog(NULL, 0, LOG_USER);
 
@@ -272,27 +281,46 @@ int main(int argc, char **argv)
 
 		syslog(LOG_ERR, "Accepted connection from %s", s);
 
-        struct thread_info *args = &t_info[t_count];
-        args->fd = new_fd;
-        args->ip = (char *) malloc(sizeof(s));
-        memcpy(args->ip, s, sizeof(s));
-        args->fp = g_fp;
+        thread_node = (struct thread_info *)malloc(sizeof(struct thread_info));
+        thread_node->status = 0;
+        thread_node->fd = new_fd;
+        thread_node->fp = g_fp;
+        thread_node->ip = (char *) malloc(sizeof(s));
+        memcpy(thread_node->ip, s, sizeof(s));
 
-        if (pthread_create(&t_info[t_count].t_id, NULL, threadfunc, &t_info[t_count])) {
+        if (pthread_create(&thread_node->t_id, NULL, threadfunc, thread_node)) {
             syslog(LOG_ERR, "pthread_create");
             exit(1);
         }
 
-        for (int i=0; i< t_count; i++) {
-            pthread_join(t_info[i].t_id, NULL);
-        }
+        if (!t_count)
+            SLIST_INIT(&head);
+
+        SLIST_INSERT_HEAD(&head, thread_node, next); 
 
         t_count++;
+
+        SLIST_FOREACH_SAFE(active_thread, &head, next, store)
+        {
+            if (active_thread->status)
+            {
+                pthread_join(active_thread->t_id, NULL);
+                SLIST_REMOVE(&head, active_thread, thread_info, next);
+                free(active_thread->ip);
+                free(active_thread);
+                t_count--;
+            }
+	    }
     }
 
-    for (int i=0; i< t_count; i++) {
-        pthread_join(t_info[i].t_id, NULL);
-        close(t_info[i].fd);
+    SLIST_FOREACH_SAFE(active_thread, &head, next, store)
+    {
+        pthread_kill(active_thread->t_id, SIGINT);
+        pthread_join(active_thread->t_id, NULL);
+        SLIST_REMOVE(&head, active_thread, thread_info, next);
+        free(active_thread->ip);
+        free(active_thread);
+        t_count--;
     }
 
     pthread_mutex_destroy(&mutex);
