@@ -76,7 +76,6 @@ void *threadfunc(void *args)
     size_t numbytes = 0;
     size_t recvbytes = 0;
 
-    pthread_t t_id = ((struct thread_info *) args)->t_id;
     int fd = ((struct thread_info *) args)->fd;
     char *ip = ((struct thread_info *) args)->ip;
     int fp = ((struct thread_info *) args)->fp;
@@ -124,8 +123,6 @@ void *threadfunc(void *args)
     close(fd);
 
     ((struct thread_info *) args)->status = 1;
-
-    pthread_cancel(t_id);
 
     return args;
 }
